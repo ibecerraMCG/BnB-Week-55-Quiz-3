@@ -1061,7 +1061,10 @@ body.no-accents .hdr-track .ht-fill{background:var(--solid-accent)}
     transition: all 0.16s; }
 .tt-card .tt-retry:hover, #tutor-retry-top .tt-retry:hover {
     border-color: var(--text-accent); color: var(--text-accent); transform: translateY(-1px); }
-#tutor-retry-top { display: none; justify-content: flex-end; margin-bottom: 1.6rem; }
+/* It rides at the right-hand end of the Questions / Sections / Mode summary
+   row rather than on a row of its own, which left an odd gap above the first
+   section. margin-left:auto pushes it past the last figure. */
+#tutor-retry-top { display: none; margin-left: auto; align-self: center; }
 #tutor-retry-banner { display: none; }
 /* The navigator's own way out of a pass, directly above "Reset quiz". */
 #nav-retry-exit-btn { margin-bottom: 0.5rem; }
@@ -1287,12 +1290,12 @@ body.no-accents .hdr-track .ht-fill{background:var(--solid-accent)}
                 <div class="qm"><span class="n" id="meta-q">0</span><span class="l">Questions</span></div>
                 <div class="qm"><span class="n" id="meta-sec">0</span><span class="l">Sections</span></div>
                 <div class="qm"><span class="n" id="meta-mode">Tutor</span><span class="l">Mode</span></div>
+                <div id="tutor-retry-top"><button class="tt-retry" id="tutor-retry-top-btn" onclick="tutorRetryIncorrect()">🔁 Retry incorrect</button></div>
             </div>
             <div class="mode-hint" id="mode-hint" style="display:flex"><span class="mh-ic">💡</span><span id="mode-hint-text">Epilepsy section - citations show both page number and slide number because the source was provided with four slides per page.</span></div>
         </div>
 
         <div id="tutor-tracker" aria-live="polite"></div>
-        <div id="tutor-retry-top"><button class="tt-retry" id="tutor-retry-top-btn" onclick="tutorRetryIncorrect()">🔁 Retry incorrect</button></div>
         <div id="results-card"></div>
         <div id="quiz-root"></div>
 
