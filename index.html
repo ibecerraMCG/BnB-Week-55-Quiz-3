@@ -1050,15 +1050,22 @@ body.no-accents .hdr-track .ht-fill{background:var(--solid-accent)}
 </style>
 
 <style id="tutor-retry-style">
-/* The retry control sits at the right-hand end of the live-score row, and again
-   at the foot of the page next to "Back to top" / "View score". */
-.tt-card .tt-retry { align-self: center; background: var(--bg-input); color: var(--text-main);
+/* The retry control sits at the right-hand end of the live-score row, at the
+   foot of the page next to "Back to top" / "View score", and - when the live
+   score is switched off, so there is no score row to host it - on its own row
+   in the same place the score row would have been. */
+.tt-card .tt-retry, #tutor-retry-top .tt-retry {
+    align-self: center; background: var(--bg-input); color: var(--text-main);
     border: 1px solid var(--border-color); border-radius: 9px; padding: 0.4rem 0.8rem;
     font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;
     transition: all 0.16s; }
-.tt-card .tt-retry:hover { border-color: var(--text-accent); color: var(--text-accent);
-    transform: translateY(-1px); }
+.tt-card .tt-retry:hover, #tutor-retry-top .tt-retry:hover {
+    border-color: var(--text-accent); color: var(--text-accent); transform: translateY(-1px); }
+#tutor-retry-top { display: none; justify-content: flex-end; margin-bottom: 1.6rem; }
 #tutor-retry-banner { display: none; }
+/* The navigator's own way out of a pass, directly above "Reset quiz". */
+#nav-retry-exit-btn { margin-bottom: 0.5rem; }
+#nav-retry-exit-btn:hover { color: var(--text-accent); border-color: var(--text-accent); }
 </style>
 </head>
 
@@ -1221,6 +1228,10 @@ body.no-accents .hdr-track .ht-fill{background:var(--solid-accent)}
             <div class="legend-item legend-graded" style="display:none"><span class="legend-swatch incorrect"></span> Incorrect</div>
         </div>
         <div class="nav-tools">
+            <button id="nav-retry-exit-btn" class="nav-tool-btn" onclick="tutorExitRetry()" style="display:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
+                Show all questions
+            </button>
             <button id="reset-quiz-btn" class="nav-tool-btn danger" onclick="resetQuizClick(this)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
                 Reset quiz
@@ -1281,6 +1292,7 @@ body.no-accents .hdr-track .ht-fill{background:var(--solid-accent)}
         </div>
 
         <div id="tutor-tracker" aria-live="polite"></div>
+        <div id="tutor-retry-top"><button class="tt-retry" id="tutor-retry-top-btn" onclick="tutorRetryIncorrect()">🔁 Retry incorrect</button></div>
         <div id="results-card"></div>
         <div id="quiz-root"></div>
 
@@ -2139,6 +2151,8 @@ function doResetQuiz() {
     const banner = document.getElementById('retry-banner'); if (banner) banner.style.display = 'none';
     retryMode = false;
     renderQuiz();
+    applyTutorRetryView();   // clears the banner, the narrowed navigator and the retry controls
+    updateProgress();
     updateTutorTracker();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2255,12 +2269,18 @@ function toggleLOs() {
 }
 
 function updateProgress() {
-    const answered = quizData.filter((_, i) => answers[i] != null).length;
+    /* During a tutor retry pass the tracker reports the pass, not the quiz. */
+    const pool = (typeof tutorRetry !== 'undefined' && tutorRetry)
+        ? tutorRetry.set : quizData.map((_, i) => i);
+    const answered = pool.filter(i => answers[i] != null).length;
     const flagged = Object.keys(flags).length;
     document.getElementById('answered-count').textContent = answered;
+    /* buildNavigator() writes the quiz length here; a pass overrides it. */
+    document.getElementById('total-count').textContent = pool.length;
     document.getElementById('flag-count').textContent = flagged;
-    document.getElementById('progress-fill').style.width = (answered / quizData.length * 100) + '%';
-    if (typeof updateHdrTrack === 'function') updateHdrTrack(answered, flagged);
+    document.getElementById('progress-fill').style.width =
+        (pool.length ? answered / pool.length * 100 : 0) + '%';
+    if (typeof updateHdrTrack === 'function') updateHdrTrack(answered, flagged, pool.length);
 }
 
 /* ============================================================
@@ -2758,12 +2778,13 @@ function bbSetLayout(v) { try { localStorage.setItem('bb_layout', v); } catch (e
 
 
 /* ---- relocatable progress tracker ---- */
-function updateHdrTrack(answered, flagged) {
+function updateHdrTrack(answered, flagged, total) {
     const f = document.getElementById('ht-fill');
     if (f) {
+        if (total == null) total = quizData.length;   /* no pass running */
         document.getElementById('ht-count').textContent = answered;
-        document.getElementById('ht-total').textContent = quizData.length;
-        f.style.width = (answered / quizData.length * 100) + '%';
+        document.getElementById('ht-total').textContent = total;
+        f.style.width = (total ? answered / total * 100 : 0) + '%';
     }
     const lf = document.getElementById('legend-flag-count');
     if (lf) lf.textContent = '⚑ ' + flagged;
@@ -2920,19 +2941,36 @@ function tutorRetryBanner() {
     return b;
 }
 
-/* The foot-of-page control: only in tutor mode, and only once something has
-   actually been missed. */
+/* Every retry control outside the score row: the foot-of-page one, the
+   navigator's way out of a pass, and the standalone top row that stands in for
+   the score row when the live score is switched off. All of them only ever
+   appear in tutor mode, and only once something has actually been missed. */
 function syncTutorRetryButtons() {
     const inRetry = !!tutorRetry;
+    const canRetry = mode === 'tutor' && (inRetry || tutorWrongList().length > 0);
+
     const btn = document.getElementById('tutor-retry-btn');
-    if (!btn) return;
-    const show = mode === 'tutor' && (inRetry || tutorWrongList().length > 0);
-    btn.style.display = show ? '' : 'none';
-    btn.textContent = inRetry ? '↺ Show all questions' : '\u{1F501} Retry incorrect';
+    if (btn) {
+        btn.style.display = canRetry ? '' : 'none';
+        btn.textContent = inRetry ? '↺ Show all questions' : '\u{1F501} Retry incorrect';
+    }
+
+    /* Only while a pass is open - it does nothing at any other time. */
+    const nav = document.getElementById('nav-retry-exit-btn');
+    if (nav) nav.style.display = (mode === 'tutor' && inRetry) ? '' : 'none';
+
+    /* With the live score on, the score row hosts the control. With it off
+       there is no score row, so this row takes its place. During a pass the
+       banner above the questions already offers the way out, so this one is
+       only the way IN. */
+    const top = document.getElementById('tutor-retry-top');
+    if (top) top.style.display = (canRetry && !gradeTrack && !inRetry) ? 'flex' : 'none';
 }
 
 function flashTutorRetry(msg) {
-    const btn = document.getElementById('tutor-retry-btn') || document.getElementById('tt-retry-btn');
+    const btn = document.getElementById('tutor-retry-btn') ||
+                document.getElementById('tt-retry-btn') ||
+                document.getElementById('tutor-retry-top-btn');
     if (!btn) return;
     const orig = btn.textContent;
     btn.textContent = msg;
